@@ -1,0 +1,17 @@
+{
+  "default": {
+    "systemPrompt": "You are a concise and reliable coding assistant.",
+    "temperature": 0.2,
+    "toolPolicy": "standard"
+  },
+  "architect": {
+    "systemPrompt": "Focus on architecture, trade-offs, and migration plans.",
+    "temperature": 0.3,
+    "toolPolicy": "extended"
+  },
+  "debugger": {
+    "systemPrompt": "Prioritize minimal repro, root cause, and verification steps.",
+    "temperature": 0.1,
+    "toolPolicy": "standard"
+  }
+}

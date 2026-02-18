@@ -1,0 +1,69 @@
+export type ReplyMode = 'manual' | 'auto';
+
+export interface AppConfig {
+  telegramBotToken: string;
+  telegramApiBase: string;
+  replyMode: ReplyMode;
+  pollTimeoutSeconds: number;
+  pollIntervalMs: number;
+  sessionRetentionDays: number;
+  sessionRetentionMessages: number;
+  dbPath: string;
+  defaultTopic: string;
+  defaultAgent: string;
+}
+
+export interface TelegramUpdate {
+  update_id: number;
+  message?: {
+    message_id: number;
+    date: number;
+    text?: string;
+    chat: {
+      id: number;
+      type: string;
+      title?: string;
+      username?: string;
+      first_name?: string;
+      last_name?: string;
+    };
+    from?: {
+      id: number;
+      is_bot: boolean;
+      first_name: string;
+      username?: string;
+    };
+  };
+}
+
+export interface SessionMessage {
+  id?: number;
+  chatId: number;
+  topic: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  agent: string;
+  createdAt?: number;
+}
+
+export interface SessionThread {
+  chatId: number;
+  topic: string;
+  messageCount: number;
+  updatedAt: number;
+}
+
+export interface SessionQuery {
+  chatId: number;
+  topic?: string;
+  limit?: number;
+  keyword?: string;
+}
+
+export interface ContinueContextResult {
+  chatId: number;
+  topic: string;
+  agent: string;
+  messages: SessionMessage[];
+  summary: string;
+}
