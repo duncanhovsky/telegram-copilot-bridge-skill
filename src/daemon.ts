@@ -1,4 +1,5 @@
 import { loadConfig } from './config.js';
+import { CopilotClient } from './copilotClient.js';
 import { ModelCatalog } from './modelCatalog.js';
 import { PaperManager } from './paperManager.js';
 import { SessionStore } from './sessionStore.js';
@@ -19,6 +20,7 @@ async function handleMessage(
   telegram: TelegramClient,
   store: SessionStore,
   catalog: ModelCatalog,
+  copilot: CopilotClient,
   papers: PaperManager,
   message: NonNullable<TelegramUpdate['message']>,
   config: ReturnType<typeof loadConfig>
@@ -113,16 +115,43 @@ async function handleMessage(
       content: `[paper-context]\n${copilotContext.slice(0, 6000)}`
     });
 
-    await sendChunks(
-      telegram,
-      chatId,
-      [
-        '已记录你的论文问题，并准备好论文上下文。',
-        '请在 VS Code Copilot Chat 中执行：',
-        `/telegram-copilot-bridge action=sync topic=${parsed.topic} mode=auto`,
-        'Copilot 将基于论文内容生成回答并回发到 Telegram。'
-      ].join('\n')
-    );
+    const continuation = store.continueContext(chatId, parsed.topic, 20);
+    if (!copilot.isEnabled()) {
+      await sendChunks(
+        telegram,
+        chatId,
+        [
+          '已记录你的论文问题和上下文。',
+          '当前未配置自动大模型调用凭据。',
+          '请设置环境变量 COPILOT_API_KEY 或 GITHUB_TOKEN 后重启 daemon。'
+        ].join('\n')
+      );
+      return;
+    }
+
+    try {
+      const answer = await copilot.generateReply({
+        modelId: parsed.modelId,
+        topic: parsed.topic,
+        agent: parsed.agent,
+        userInput: question,
+        contextSummary: continuation.summary,
+        extraContext: copilotContext
+      });
+
+      store.append({
+        chatId,
+        topic: parsed.topic,
+        role: 'assistant',
+        agent: parsed.agent,
+        content: `[copilot-paper-qa] ${question} => ${answer.slice(0, 3000)}`
+      });
+
+      await sendChunks(telegram, chatId, answer);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      await sendChunks(telegram, chatId, `自动 Copilot 论文问答失败：${messageText}`);
+    }
     return;
   }
 
@@ -166,13 +195,39 @@ async function handleMessage(
     content: parsed.text
   });
 
-  await sendChunks(
-    telegram,
-    chatId,
-    `已收到消息并写入会话（topic=${parsed.topic}, agent=${parsed.agent}, model=${parsed.modelId}）。\n` +
-      '当前为低消耗待机模式：守护进程会持续监听，但不会自动调用 Copilot。\n' +
-      '如需让 Copilot 生成回复，请在 VS Code Copilot Chat 中调用 /telegram-copilot-bridge 处理该会话。'
-  );
+  const continuation = store.continueContext(chatId, parsed.topic, 20);
+  if (!copilot.isEnabled()) {
+    await sendChunks(
+      telegram,
+      chatId,
+      `已收到消息并写入会话（topic=${parsed.topic}, agent=${parsed.agent}, model=${parsed.modelId}）。\n` +
+        '未配置自动大模型调用凭据。请设置 COPILOT_API_KEY 或 GITHUB_TOKEN 后重启 daemon。'
+    );
+    return;
+  }
+
+  try {
+    const reply = await copilot.generateReply({
+      modelId: parsed.modelId,
+      topic: parsed.topic,
+      agent: parsed.agent,
+      userInput: parsed.text,
+      contextSummary: continuation.summary
+    });
+
+    store.append({
+      chatId,
+      topic: parsed.topic,
+      role: 'assistant',
+      agent: parsed.agent,
+      content: reply.slice(0, 3000)
+    });
+
+    await sendChunks(telegram, chatId, reply);
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    await sendChunks(telegram, chatId, `自动 Copilot 回复失败：${messageText}`);
+  }
 }
 
 function isPdf(fileName?: string, mimeType?: string): boolean {
@@ -249,6 +304,7 @@ async function main(): Promise<void> {
   const telegram = new TelegramClient(config);
   const store = new SessionStore(config);
   const catalog = new ModelCatalog(config.modelCatalogPath);
+  const copilot = new CopilotClient(config);
   const papers = new PaperManager(config);
 
   let offset = store.getOffset();
@@ -266,7 +322,7 @@ async function main(): Promise<void> {
           continue;
         }
 
-        await handleMessage(telegram, store, catalog, papers, message, config);
+        await handleMessage(telegram, store, catalog, copilot, papers, message, config);
         offset = Math.max(offset, update.update_id + 1);
       }
 

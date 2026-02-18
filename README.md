@@ -20,12 +20,14 @@ npm run build
 至少需要设置：
 
 - `TELEGRAM_BOT_TOKEN`
+- `COPILOT_API_KEY`（或 `GITHUB_TOKEN`，用于自动调用大模型）
 
 可选：
 
 - `HTTP_PROXY`
 - `HTTPS_PROXY`
 - `NO_PROXY`
+- `COPILOT_CHAT_COMPLETIONS_URL`（默认 `https://models.inference.ai.azure.com/chat/completions`）
 
 项目默认从 [.vscode/mcp.json](.vscode/mcp.json) 读取配置，其中 Token 建议保持为 `${env:TELEGRAM_BOT_TOKEN}`。
 
