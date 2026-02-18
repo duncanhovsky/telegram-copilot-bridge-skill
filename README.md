@@ -28,6 +28,13 @@ npm run build
 - `HTTPS_PROXY`
 - `NO_PROXY`
 - `COPILOT_CHAT_COMPLETIONS_URL`（默认 `https://models.inference.ai.azure.com/chat/completions`）
+- `COPILOT_MAX_RETRIES`（默认 `3`）
+- `COPILOT_RETRY_BASE_MS`（默认 `600`）
+- `COPILOT_TIMEOUT_MS`（默认 `45000`）
+- `COPILOT_MIN_INTERVAL_MS`（默认 `1200`，按 `chat_id + topic` 限流）
+- `COPILOT_USAGE_LOG_PATH`（默认 `./data/copilot-usage.log`）
+- `COPILOT_PRICE_INPUT_PER_1M`（默认 `0`，用于成本估算）
+- `COPILOT_PRICE_OUTPUT_PER_1M`（默认 `0`，用于成本估算）
 
 项目默认从 [.vscode/mcp.json](.vscode/mcp.json) 读取配置，其中 Token 建议保持为 `${env:TELEGRAM_BOT_TOKEN}`。
 

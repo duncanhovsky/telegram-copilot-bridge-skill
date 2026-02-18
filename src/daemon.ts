@@ -7,6 +7,8 @@ import { TelegramClient } from './telegram.js';
 import { parseTelegramText } from './topic.js';
 import { TelegramUpdate } from './types.js';
 
+const copilotLastCallAt = new Map<string, number>();
+
 function formatModelList(catalog: ModelCatalog): string {
   const lines = catalog.list().map((item) => `- ${item.id} | ${item.name} | ${item.provider}\n  计费：${item.pricing}`);
   return ['当前可选 Copilot 大模型：', ...lines].join('\n');
@@ -14,6 +16,34 @@ function formatModelList(catalog: ModelCatalog): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getCopilotMinIntervalMs(): number {
+  const raw = process.env.COPILOT_MIN_INTERVAL_MS;
+  if (!raw) {
+    return 1200;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`COPILOT_MIN_INTERVAL_MS must be a non-negative number, got: ${raw}`);
+  }
+  return parsed;
+}
+
+async function enforceCopilotRateLimit(chatId: number, topic: string): Promise<void> {
+  const minInterval = getCopilotMinIntervalMs();
+  if (minInterval === 0) {
+    return;
+  }
+
+  const key = `${chatId}:${topic}`;
+  const now = Date.now();
+  const last = copilotLastCallAt.get(key) ?? 0;
+  const waitMs = minInterval - (now - last);
+  if (waitMs > 0) {
+    await sleep(waitMs);
+  }
+  copilotLastCallAt.set(key, Date.now());
 }
 
 async function handleMessage(
@@ -130,6 +160,7 @@ async function handleMessage(
     }
 
     try {
+      await enforceCopilotRateLimit(chatId, parsed.topic);
       const answer = await copilot.generateReply({
         modelId: parsed.modelId,
         topic: parsed.topic,
@@ -207,6 +238,7 @@ async function handleMessage(
   }
 
   try {
+    await enforceCopilotRateLimit(chatId, parsed.topic);
     const reply = await copilot.generateReply({
       modelId: parsed.modelId,
       topic: parsed.topic,
