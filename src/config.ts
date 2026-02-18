@@ -1,5 +1,9 @@
 import { AppConfig, ReplyMode } from './types.js';
 
+interface LoadConfigOptions {
+  requireTelegramToken?: boolean;
+}
+
 function asNumber(name: string, fallback: number): number {
   const value = process.env[name];
   if (!value) {
@@ -22,9 +26,10 @@ function asMode(value?: string): ReplyMode {
   return value;
 }
 
-export function loadConfig(): AppConfig {
+export function loadConfig(options?: LoadConfigOptions): AppConfig {
+  const requireTelegramToken = options?.requireTelegramToken ?? true;
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? '';
-  if (!telegramBotToken) {
+  if (requireTelegramToken && !telegramBotToken) {
     throw new Error('TELEGRAM_BOT_TOKEN is required');
   }
 

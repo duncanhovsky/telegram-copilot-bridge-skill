@@ -118,6 +118,39 @@ export class PaperManager {
     ].join('\n');
   }
 
+  buildCopilotQaContext(record: PaperRecord, question: string): string {
+    if (!fs.existsSync(record.textPath)) {
+      return [
+        `论文标题：${record.title}`,
+        `分类：${record.category}`,
+        '未找到论文文本内容文件，请基于已有摘要谨慎回答。',
+        `摘要：${record.summary}`,
+        `用户问题：${question}`
+      ].join('\n');
+    }
+
+    const text = fs.readFileSync(record.textPath, 'utf8');
+    const snippets = this.retrieveSnippets(text, question, 8);
+
+    const lines = [
+      `论文标题：${record.title}`,
+      `分类：${record.category}`,
+      `摘要：${record.summary}`,
+      `用户问题：${question}`,
+      '候选证据段落（按相关度排序）：'
+    ];
+
+    if (snippets.length === 0) {
+      lines.push('1. 未检索到与问题直接匹配的段落，请结合论文整体内容谨慎推理，并明确不确定性。');
+    } else {
+      for (let index = 0; index < snippets.length; index += 1) {
+        lines.push(`${index + 1}. ${snippets[index]}`);
+      }
+    }
+
+    return lines.join('\n');
+  }
+
   private appendIndex(record: PaperRecord): void {
     const indexPath = path.join(this.dbDir, 'index.json');
     const current = fs.existsSync(indexPath)

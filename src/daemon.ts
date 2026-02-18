@@ -89,15 +89,40 @@ async function handleMessage(
       return;
     }
 
-    const answer = papers.answerQuestion(paper, parsed.question ?? '');
+    const question = (parsed.question ?? '').trim();
+    if (!question) {
+      await sendChunks(telegram, chatId, '请使用 /ask <你的问题> 进行提问。');
+      return;
+    }
+
+    const copilotContext = papers.buildCopilotQaContext(paper, question);
+
     store.append({
       chatId,
       topic: parsed.topic,
-      role: 'assistant',
+      role: 'user',
       agent: parsed.agent,
-      content: `[paper-qa] ${parsed.question} => ${answer.slice(0, 3000)}`
+      content: question
     });
-    await sendChunks(telegram, chatId, answer);
+
+    store.append({
+      chatId,
+      topic: parsed.topic,
+      role: 'system',
+      agent: parsed.agent,
+      content: `[paper-context]\n${copilotContext.slice(0, 6000)}`
+    });
+
+    await sendChunks(
+      telegram,
+      chatId,
+      [
+        '已记录你的论文问题，并准备好论文上下文。',
+        '请在 VS Code Copilot Chat 中执行：',
+        `/telegram-copilot-bridge action=sync topic=${parsed.topic} mode=auto`,
+        'Copilot 将基于论文内容生成回答并回发到 Telegram。'
+      ].join('\n')
+    );
     return;
   }
 
