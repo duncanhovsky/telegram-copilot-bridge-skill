@@ -1,5 +1,9 @@
 import { z } from 'zod';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { AppConfig, TelegramUpdate } from './types.js';
+
+const execFileAsync = promisify(execFile);
 
 const updatesSchema = z.object({
   ok: z.boolean(),
@@ -29,17 +33,7 @@ export class TelegramClient {
       payload.offset = offset;
     }
 
-    const response = await fetch(this.endpoint('getUpdates'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      throw new Error(`Telegram getUpdates failed: ${response.status}`);
-    }
-
-    const json = await response.json();
+    const json = await this.postWithFallback('getUpdates', payload);
     const parsed = updatesSchema.parse(json);
     if (!parsed.ok) {
       throw new Error('Telegram getUpdates returned ok=false');
@@ -49,25 +43,54 @@ export class TelegramClient {
   }
 
   async sendMessage(chatId: number, text: string): Promise<number> {
-    const response = await fetch(this.endpoint('sendMessage'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text
-      })
+    const json = await this.postWithFallback('sendMessage', {
+      chat_id: chatId,
+      text
     });
-
-    if (!response.ok) {
-      throw new Error(`Telegram sendMessage failed: ${response.status}`);
-    }
-
-    const json = await response.json();
     const parsed = sendSchema.parse(json);
     if (!parsed.ok) {
       throw new Error('Telegram sendMessage returned ok=false');
     }
 
     return parsed.result.message_id;
+  }
+
+  private async postWithFallback(method: string, payload: Record<string, unknown>): Promise<unknown> {
+    const url = this.endpoint(method);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Telegram ${method} failed: ${response.status}`);
+      }
+
+      return response.json();
+    } catch {
+      return this.postViaPowerShell(url, payload);
+    }
+  }
+
+  private async postViaPowerShell(url: string, payload: Record<string, unknown>): Promise<unknown> {
+    const body = JSON.stringify(payload).replace(/'/g, "''");
+    const escapedUrl = url.replace(/'/g, "''");
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      `$url = '${escapedUrl}'`,
+      `$body = '${body}'`,
+      "$resp = Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json' -Body $body",
+      "$resp | ConvertTo-Json -Depth 20 -Compress"
+    ].join('; ');
+
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-Command', script], {
+      windowsHide: true,
+      maxBuffer: 2 * 1024 * 1024
+    });
+
+    return JSON.parse(stdout.trim());
   }
 }
